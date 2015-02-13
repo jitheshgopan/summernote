@@ -644,6 +644,29 @@ define([
       },
 
       /**
+       * @method
+       *
+       * create WrappedRange from nodes
+       *
+       * @param {Node[]} nodes
+       * @return {WrappedRange}
+       */
+      createFromNodes: function (nodes) {
+        // TODO compare nodes and sort
+        var startRange = this.createFromNode(list.head(nodes)).collapse(true);
+        var startPoint = startRange.getStartPoint();
+        var endRange = this.createFromNode(list.last(nodes)).collapse();
+        var endPoint = endRange.getEndPoint();
+
+        return this.create(
+          startPoint.node,
+          startPoint.offset,
+          endPoint.node,
+          endPoint.offset
+        );
+      },
+
+      /**
        * @method 
        * 
        * create WrappedRange from bookmark

@@ -9,8 +9,7 @@ define([
   'summernote/editing/Typing',
   'summernote/editing/Table',
   'summernote/editing/Bullet'
-], function (agent, func, list, dom, range, async,
-             Style, Typing, Table, Bullet) {
+], function (agent, func, list, dom, range, async, Style, Typing, Table, Bullet) {
   /**
    * @class editing.Editor
    *
@@ -148,22 +147,26 @@ define([
     };
 
     /**
-     * @method beforeCommand
-     * before command
-     * @param {jQuery} $editable
-     */
-    var beforeCommand = this.beforeCommand = function ($editable) {
-      triggerOnBeforeChange($editable);
-    };
-
-    /**
      * @method afterCommand
      * after command
-     * @param {jQuery} $editable
+     * @param {Function} exec
      */
-    var afterCommand = this.afterCommand = function ($editable) {
-      $editable.data('NoteHistory').recordUndo();
-      triggerOnChange($editable);
+    var makeEditingCommand = this.makeEditingCommand = function (exec) {
+      var self = this;
+
+      return function () {
+        var $editable = list.head(arguments);
+
+        // before editing
+        triggerOnBeforeChange($editable);
+
+        // editing
+        exec.apply(self, arguments);
+
+        // after editing
+        $editable.data('NoteHistory').recordUndo();
+        triggerOnChange($editable);
+      };
     };
 
     /**
@@ -276,14 +279,10 @@ define([
                     'backColor', 'foreColor', 'insertHorizontalRule', 'fontName'];
 
     for (var idx = 0, len = commands.length; idx < len; idx ++) {
-      this[commands[idx]] = (function (sCmd) {
-        return function ($editable, value) {
-          beforeCommand($editable);
-
-          document.execCommand(sCmd, false, value);
-
-          afterCommand($editable);
-        };
+      (function (commandName) {
+        this[commandName] = makeEditingCommand(function ($editable, value) {
+          document.execCommand(commandName, false, value);
+        });
       })(commands[idx]);
     }
     /* jshint ignore:end */
@@ -301,11 +300,14 @@ define([
       if (rng.isCollapsed() && rng.isOnCell()) {
         table.tab(rng);
       } else {
-        beforeCommand($editable);
-        typing.insertTab($editable, rng, options.tabsize);
-        afterCommand($editable);
+        this.insertTab($editable, options);
       }
     };
+
+    this.insertTab = makeEditingCommand(function ($editable, options) {
+      var rng = range.create();
+      typing.insertTab($editable, rng, options.tabsize);
+    });
 
     /**
      * @method untab
@@ -327,49 +329,39 @@ define([
      *
      * @param {Node} $editable
      */
-    this.insertParagraph = function ($editable) {
-      beforeCommand($editable);
+    this.insertParagraph = makeEditingCommand(function ($editable) {
       typing.insertParagraph($editable);
-      afterCommand($editable);
-    };
+    });
 
     /**
      * @method insertOrderedList
      *
      * @param {jQuery} $editable
      */
-    this.insertOrderedList = function ($editable) {
-      beforeCommand($editable);
+    this.insertOrderedList = makeEditingCommand(function ($editable) {
       bullet.insertOrderedList($editable);
-      afterCommand($editable);
-    };
+    });
 
     /**
      * @param {jQuery} $editable
      */
-    this.insertUnorderedList = function ($editable) {
-      beforeCommand($editable);
+    this.insertUnorderedList = makeEditingCommand(function ($editable) {
       bullet.insertUnorderedList($editable);
-      afterCommand($editable);
-    };
+    });
 
     /**
      * @param {jQuery} $editable
      */
-    this.indent = function ($editable) {
-      beforeCommand($editable);
+    this.indent = makeEditingCommand(function ($editable) {
       bullet.indent($editable);
-      afterCommand($editable);
-    };
+    });
 
     /**
      * @param {jQuery} $editable
      */
-    this.outdent = function ($editable) {
-      beforeCommand($editable);
+    this.outdent = makeEditingCommand(function ($editable) {
       bullet.outdent($editable);
-      afterCommand($editable);
-    };
+    });
 
     /**
      * insert image
@@ -377,23 +369,21 @@ define([
      * @param {jQuery} $editable
      * @param {String} sUrl
      */
-    this.insertImage = function ($editable, sUrl, filename) {
+    this.insertImage = makeEditingCommand(function ($editable, sUrl, filename) {
       async.createImage(sUrl, filename).then(function ($image) {
-        beforeCommand($editable);
         $image.css({
           display: '',
           width: Math.min($editable.width(), $image.width())
         });
         range.create().insertNode($image[0]);
         range.createFromNode($image[0]).collapse().select();
-        afterCommand($editable);
       }).fail(function () {
         var callbacks = $editable.data('callbacks');
         if (callbacks.onImageUploadError) {
           callbacks.onImageUploadError();
         }
       });
-    };
+    });
 
     /**
      * @method insertNode
@@ -401,26 +391,22 @@ define([
      * @param {Node} $editable
      * @param {Node} node
      */
-    this.insertNode = function ($editable, node) {
-      beforeCommand($editable);
+    this.insertNode = makeEditingCommand(function ($editable, node) {
       var rng = this.createRange($editable);
       rng.insertNode(node);
       range.createFromNode(node).collapse().select();
-      afterCommand($editable);
-    };
+    });
 
     /**
      * insert text
      * @param {Node} $editable
      * @param {String} text
      */
-    this.insertText = function ($editable, text) {
-      beforeCommand($editable);
+    this.insertText = makeEditingCommand(function ($editable, text) {
       var rng = this.createRange($editable);
       var textNode = rng.insertNode(dom.createText(text));
       range.create(textNode, dom.nodeLength(textNode)).select();
-      afterCommand($editable);
-    };
+    });
 
     /**
      * formatBlock
@@ -428,17 +414,13 @@ define([
      * @param {jQuery} $editable
      * @param {String} tagName
      */
-    this.formatBlock = function ($editable, tagName) {
-      beforeCommand($editable);
+    this.formatBlock = makeEditingCommand(function ($editable, tagName) {
       tagName = agent.isMSIE ? '<' + tagName + '>' : tagName;
       document.execCommand('FormatBlock', false, tagName);
-      afterCommand($editable);
-    };
+    });
 
     this.formatPara = function ($editable) {
-      beforeCommand($editable);
       this.formatBlock($editable, 'P');
-      afterCommand($editable);
     };
 
     /* jshint ignore:start */
@@ -457,9 +439,7 @@ define([
      * @param {jQuery} $editable
      * @param {String} value - px
      */
-    this.fontSize = function ($editable, value) {
-      beforeCommand($editable);
-
+    this.fontSize = makeEditingCommand(function ($editable, value) {
       var rng = this.createRange($editable);
       var spans = style.styleNodes(rng);
       $.each(spans, function (idx, span) {
@@ -467,22 +447,19 @@ define([
           'font-size': value + 'px'
         });
       });
-
-      afterCommand($editable);
-    };
+    });
 
     /**
      * lineHeight
+     *
      * @param {jQuery} $editable
      * @param {String} value
      */
-    this.lineHeight = function ($editable, value) {
-      beforeCommand($editable);
+    this.lineHeight = makeEditingCommand(function ($editable, value) {
       style.stylePara(range.create(), {
         lineHeight: value
       });
-      afterCommand($editable);
-    };
+    });
 
     /**
      * unlink
@@ -491,18 +468,16 @@ define([
      *
      * @param {jQuery} $editable
      */
-    this.unlink = function ($editable) {
+    this.unlink = makeEditingCommand(function () {
       var rng = range.create();
       if (rng.isOnAnchor()) {
         var anchor = dom.ancestor(rng.sc, dom.isAnchor);
         rng = range.createFromNode(anchor);
         rng.select();
 
-        beforeCommand($editable);
         document.execCommand('unlink');
-        afterCommand($editable);
       }
-    };
+    });
 
     /**
      * create link (command)
@@ -511,14 +486,12 @@ define([
      * @param {Object} linkInfo
      * @param {Object} options
      */
-    this.createLink = function ($editable, linkInfo, options) {
+    this.createLink = makeEditingCommand(function ($editable, linkInfo, options) {
       var linkUrl = linkInfo.url;
       var linkText = linkInfo.text;
       var isNewWindow = linkInfo.newWindow;
       var rng = linkInfo.range;
       var isTextChanged = rng.toString() !== linkText;
-
-      beforeCommand($editable);
 
       if (options.onCreateLink) {
         linkUrl = options.onCreateLink(linkUrl);
@@ -544,20 +517,8 @@ define([
         });
       });
 
-      var startRange = range.createFromNode(list.head(anchors)).collapse(true);
-      var startPoint = startRange.getStartPoint();
-      var endRange = range.createFromNode(list.last(anchors)).collapse();
-      var endPoint = endRange.getEndPoint();
-
-      range.create(
-        startPoint.node,
-        startPoint.offset,
-        endPoint.node,
-        endPoint.offset
-      ).select();
-
-      afterCommand($editable);
-    };
+      range.createFromNodes(anchors).select();
+    });
 
     /**
      * returns link info
@@ -569,9 +530,7 @@ define([
      * @return {String} [return.url=""]
      */
     this.getLinkInfo = function ($editable) {
-      $editable.focus();
-
-      var rng = range.create().expand(dom.isAnchor);
+      var rng = this.createRange($editable).expand(dom.isAnchor);
 
       // Get the first anchor on range(for edit).
       var $anchor = $(list.head(rng.nodes(dom.isAnchor)));
@@ -592,17 +551,13 @@ define([
      * @param {String} sObjColor.foreColor foreground color
      * @param {String} sObjColor.backColor background color
      */
-    this.color = function ($editable, sObjColor) {
+    this.color = makeEditingCommand(function ($editable, sObjColor) {
       var oColor = JSON.parse(sObjColor);
       var foreColor = oColor.foreColor, backColor = oColor.backColor;
 
-      beforeCommand($editable);
-
       if (foreColor) { document.execCommand('foreColor', false, foreColor); }
       if (backColor) { document.execCommand('backColor', false, backColor); }
-
-      afterCommand($editable);
-    };
+    });
 
     /**
      * insert Table
@@ -610,15 +565,11 @@ define([
      * @param {Node} $editable
      * @param {String} sDim dimension of table (ex : "5x5")
      */
-    this.insertTable = function ($editable, sDim) {
+    this.insertTable = makeEditingCommand(function ($editable, sDim) {
       var dimension = sDim.split('x');
-      beforeCommand($editable);
-
-      var rng = range.create();
-      rng = rng.deleteContents();
+      var rng = range.create().deleteContents();
       rng.insertNode(table.createTable(dimension[0], dimension[1]));
-      afterCommand($editable);
-    };
+    });
 
     /**
      * float me
@@ -627,11 +578,9 @@ define([
      * @param {String} value
      * @param {jQuery} $target
      */
-    this.floatMe = function ($editable, value, $target) {
-      beforeCommand($editable);
+    this.floatMe = makeEditingCommand(function ($editable, value, $target) {
       $target.css('float', value);
-      afterCommand($editable);
-    };
+    });
 
     /**
      * change image shape
@@ -640,17 +589,13 @@ define([
      * @param {String} value css class
      * @param {Node} $target
      */
-    this.imageShape = function ($editable, value, $target) {
-      beforeCommand($editable);
-
+    this.imageShape = makeEditingCommand(function ($editable, value, $target) {
       $target.removeClass('img-rounded img-circle img-thumbnail');
 
       if (value) {
         $target.addClass(value);
       }
-
-      afterCommand($editable);
-    };
+    });
 
     /**
      * resize overlay element
@@ -658,25 +603,21 @@ define([
      * @param {String} value
      * @param {jQuery} $target - target element
      */
-    this.resize = function ($editable, value, $target) {
-      beforeCommand($editable);
-
+    this.resize = makeEditingCommand(function ($editable, value, $target) {
       $target.css({
         width: value * 100 + '%',
         height: ''
       });
-
-      afterCommand($editable);
-    };
+    });
 
     /**
      * @param {Position} pos
      * @param {jQuery} $target - target element
-     * @param {Boolean} [bKeepRatio] - keep ratio
+     * @param {Boolean} [isKeepRatio] - keep ratio
      */
-    this.resizeTo = function (pos, $target, bKeepRatio) {
+    this.resizeTo = function (pos, $target, isKeepRatio) {
       var imageSize;
-      if (bKeepRatio) {
+      if (isKeepRatio) {
         var newRatio = pos.y / pos.x;
         var ratio = $target.data('ratio');
         imageSize = {
@@ -694,23 +635,20 @@ define([
     };
 
     /**
-     * remove media object
+     * remove media object(image, video, ...)
      *
      * @param {jQuery} $editable
      * @param {String} value - dummy argument (for keep interface)
      * @param {jQuery} $target - target element
      */
-    this.removeMedia = function ($editable, value, $target) {
-      beforeCommand($editable);
+    this.removeMedia = makeEditingCommand(function ($editable, value, $target) {
       $target.detach();
 
       var callbacks = $editable.data('callbacks');
       if (callbacks && callbacks.onMediaDelete) {
         callbacks.onMediaDelete($target, this, $editable);
       }
-
-      afterCommand($editable);
-    };
+    });
   };
 
   return Editor;
