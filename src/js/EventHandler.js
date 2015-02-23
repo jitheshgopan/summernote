@@ -128,11 +128,11 @@ define([
        * @param {Object} layoutInfo
        */
       showImageDialog: function (layoutInfo) {
-        var $dialog = layoutInfo.dialog(),
-            $editable = layoutInfo.editable();
-
-        editor.saveRange($editable);
-        dialog.showImageDialog($editable, $dialog).then(function (data) {
+        var $editor = layoutInfo.editor(),
+            $dialog = layoutInfo.dialog(),
+            $editable = layoutInfo.editable(),
+            options = $editor.data('options');
+        function onSuccess(data) {
           editor.restoreRange($editable);
 
           if (typeof data === 'string') {
@@ -140,11 +140,29 @@ define([
             editor.insertImage($editable, data);
           } else {
             // array of files
-            insertImages(layoutInfo, data);
+            insertImages($editable, data);
           }
-        }).fail(function () {
+        }
+        function onFail() {
           editor.restoreRange($editable);
-        });
+        }
+
+        editor.saveRange($editable);
+
+        if (options.customDialogs && options.customDialogs.image) {
+          if (typeof options.customDialogs.image !== 'function') {
+            throw ('Custom dialog handler should be a function');
+          }
+          options.customDialogs.image(function (data) {
+            if (data) {
+              onSuccess(data);
+            } else {
+              onFail();
+            }
+          });
+          return;
+        }
+        dialog.showImageDialog($editable, $dialog).then(onSuccess).fail(onFail);
       },
 
       /**
