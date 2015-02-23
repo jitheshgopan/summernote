@@ -6,7 +6,7 @@
  * Copyright 2013-2015 Alan Hong. and other contributors
  * summernote may be freely distributed under the MIT license./
  *
- * Date: 2015-02-08T09:50Z
+ * Date: 2015-02-23T13:03Z
  */
 (function (factory) {
   /* global define */
@@ -4480,11 +4480,11 @@
        * @param {Object} layoutInfo
        */
       showImageDialog: function (layoutInfo) {
-        var $dialog = layoutInfo.dialog(),
-            $editable = layoutInfo.editable();
-
-        editor.saveRange($editable);
-        dialog.showImageDialog($editable, $dialog).then(function (data) {
+        var $editor = layoutInfo.editor(),
+            $dialog = layoutInfo.dialog(),
+            $editable = layoutInfo.editable(),
+            options = $editor.data('options');
+        function onSuccess(data) {
           editor.restoreRange($editable);
 
           if (typeof data === 'string') {
@@ -4492,11 +4492,29 @@
             editor.insertImage($editable, data);
           } else {
             // array of files
-            insertImages(layoutInfo, data);
+            insertImages($editable, data);
           }
-        }).fail(function () {
+        }
+        function onFail() {
           editor.restoreRange($editable);
-        });
+        }
+
+        editor.saveRange($editable);
+
+        if (options.customDialogs && options.customDialogs.image) {
+          if (typeof options.customDialogs.image !== 'function') {
+            throw ('Custom dialog handler should be a function');
+          }
+          options.customDialogs.image(function (data) {
+            if (data) {
+              onSuccess(data);
+            } else {
+              onFail();
+            }
+          });
+          return;
+        }
+        dialog.showImageDialog($editable, $dialog).then(onSuccess).fail(onFail);
       },
 
       /**
@@ -4888,10 +4906,11 @@
           $dropzone = layoutInfo.dropzone,
           $dropzoneMessage = layoutInfo.dropzone.find('.note-dropzone-message');
 
-      // show dropzone on dragenter when dragging a object to document.
+      // show dropzone on dragenter when dragging a object to document
+      // -but only if the editor is visible, i.e. has a positive width and height
       $document.on('dragenter', function (e) {
         var isCodeview = layoutInfo.editor.hasClass('codeview');
-        if (!isCodeview && !collection.length) {
+        if (!isCodeview && !collection.length && layoutInfo.editor.width() > 0 && layoutInfo.editor.height() > 0) {
           layoutInfo.editor.addClass('dragover');
           $dropzone.width(layoutInfo.editor.width());
           $dropzone.height(layoutInfo.editor.height());
@@ -4906,11 +4925,6 @@
       }).on('drop', function () {
         collection = $();
         layoutInfo.editor.removeClass('dragover');
-      }).on('mouseout', function (e) {
-        collection = collection.not(e.target);
-        if (!collection.length) {
-          layoutInfo.editor.removeClass('dragover');
-        }
       });
 
       // change dropzone's message on hover.
